@@ -1,5 +1,5 @@
 -- =============================================
--- NIGHTMARE HUB | SUSANOO & EATER V12.1 (PURPLE EDITION)
+-- NIGHTMARE HUB | SUSANOO & EATER V12.1 (LAG OPTIMIZED + RGB)
 -- Creator: ITZ_YOURNIGHTMARE | Hub: NIGHTMARE_HUB
 -- =============================================
 
@@ -24,15 +24,15 @@ local function sendChatMessage(message)
 end
 
 -- =============================================
--- DETECTION & OWNER ANNOUNCEMENT ("OWNER IS ONLINE")
+-- LAG-FREE DETECTION & OWNER ANNOUNCEMENT
 -- =============================================
 local function checkOtherUsers()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             pcall(function()
                 local pGui = player:FindFirstChild("PlayerGui")
-                if pGui and pGui:FindFirstChild("NightmarePurpleHub") then
-                    sendChatMessage("NIGHTMARE OWNER IS ONLINE 🟣💀")
+                if pGui and pGui:FindFirstChild("NightmareRGBHub") then
+                    sendChatMessage("NIGHTMARE OWNER IS ONLINE 🌈💀")
                     return
                 end
             end)
@@ -45,22 +45,22 @@ Players.PlayerAdded:Connect(function(player)
         task.wait(2)
         pcall(function()
             local pGui = player:FindFirstChild("PlayerGui")
-            if pGui and pGui:FindFirstChild("NightmarePurpleHub") then
-                sendChatMessage("NIGHTMARE OWNER IS ONLINE 🟣💀")
+            if pGui and pGui:FindFirstChild("NightmareRGBHub") then
+                sendChatMessage("NIGHTMARE OWNER IS ONLINE 🌈💀")
             end
         end)
     end)
 end)
 
 -- =============================================
--- SCRIPT 1: FIXED & OPTIMIZED KILL AURA LOGIC
+-- SCRIPT 1: ULTRA-OPTIMIZED KILL AURA LOGIC
 -- =============================================
 local AURA_CONFIG = {
     Enabled = false,
-    Range = 27,
-    MaxAttacksPerSecond = 15,
-    BurstSize = 2,
-    ScanInterval = 0.5, -- Increased to reduce lag
+    Range = 25,
+    MaxAttacksPerSecond = 10, -- Reduced to prevent lag spikes
+    BurstSize = 1,            -- Lowered burst size for zero lag
+    ScanInterval = 1.0,       -- Increased scan interval to save CPU
     TargetPlayers = true,
     TargetNPCs = true,
 }
@@ -72,32 +72,14 @@ local function findAttackRemote()
     local possiblePaths = {
         ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("ActionsSystem") and ReplicatedStorage.Systems.ActionsSystem.Network:FindFirstChild("Attack"),
         ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("Combat") and ReplicatedStorage.Systems.Combat:FindFirstChild("Attack"),
-        ReplicatedStorage:FindFirstChild("Combat") and ReplicatedStorage.Combat:FindFirstChild("Attack"),
-        ReplicatedStorage:FindFirstChild("Game") and ReplicatedStorage.Game:FindFirstChild("Attack"),
         ReplicatedStorage:FindFirstChild("Attack"),
-        ReplicatedStorage:FindFirstChild("Remote") and ReplicatedStorage.Remote:FindFirstChild("Attack"),
     }
     for _, remote in ipairs(possiblePaths) do
         if remote and (remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction")) then
             return remote
         end
     end
-    local function deepScan(folder)
-        for _, child in folder:GetChildren() do
-            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") then
-                local lowerName = child.Name:lower()
-                if lowerName:find("attack") or lowerName:find("combat") or lowerName:find("damage") or lowerName:find("hit") then
-                    return child
-                end
-            end
-            if child:IsA("Folder") or child:IsA("Model") then
-                local found = deepScan(child)
-                if found then return found end
-            end
-        end
-        return nil
-    end
-    return deepScan(ReplicatedStorage)
+    return nil
 end
 
 AttackRemote = findAttackRemote()
@@ -115,7 +97,7 @@ local EntityManager = {
                 if player ~= LocalPlayer then
                     local char = player.Character
                     if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                        table.insert(newCache, { character = char, hrp = char.HumanoidRootPart, humanoid = char.Humanoid, type = "player" })
+                        table.insert(newCache, { character = char, hrp = char.HumanoidRootPart, humanoid = char.Humanoid })
                     end
                 end
             end
@@ -126,7 +108,7 @@ local EntityManager = {
                     local hrp = child:FindFirstChild("HumanoidRootPart")
                     local hum = child:FindFirstChild("Humanoid")
                     if hrp and hum and hum.Health > 0 then
-                        table.insert(newCache, { character = child, hrp = hrp, humanoid = hum, type = "npc" })
+                        table.insert(newCache, { character = child, hrp = hrp, humanoid = hum })
                     end
                 end
             end
@@ -139,10 +121,8 @@ local EntityManager = {
         local bestDist = maxDist * maxDist
         for _, target in ipairs(self.cache) do
             if target.hrp and target.hrp.Parent then
-                local dx = target.hrp.Position.X - origin.X
-                local dy = target.hrp.Position.Y - origin.Y
-                local dz = target.hrp.Position.Z - origin.Z
-                local distSq = dx*dx + dy*dy + dz*dz
+                local pos = target.hrp.Position
+                local distSq = (pos.X - origin.X)^2 + (pos.Y - origin.Y)^2 + (pos.Z - origin.Z)^2
                 if distSq < bestDist then
                     bestDist = distSq
                     best = target
@@ -155,46 +135,27 @@ local EntityManager = {
 
 local auraLastAttackTime = 0
 local auraAttackCounter = 0
-local auraRateLimitHit = false
-local auraRateLimitRecoveryTime = 0
 
 local function sendAttack(target)
     if not AttackRemote or not target or not target.character then return false end
-    if auraRateLimitHit then
-        if tick() - auraRateLimitRecoveryTime < 3 then return false else auraRateLimitHit = false end
-    end
     local now = tick()
-    local timeBetweenAttacks = 1 / AURA_CONFIG.MaxAttacksPerSecond
-    if now - auraLastAttackTime < timeBetweenAttacks then return false end
+    if now - auraLastAttackTime < (1 / AURA_CONFIG.MaxAttacksPerSecond) then return false end
 
-    local attempts = {
-        function() if isAuraRemoteEvent then AttackRemote:FireServer(target.character, 1) else AttackRemote:InvokeServer(target.character, 1) end end,
-        function() if isAuraRemoteEvent then AttackRemote:FireServer(target.character, target.humanoid, 1) else AttackRemote:InvokeServer(target.character, target.humanoid, 1) end end,
-        function() if isAuraRemoteEvent then AttackRemote:FireServer(target.hrp, 1) else AttackRemote:InvokeServer(target.hrp, 1) end end,
-        function() if isAuraRemoteEvent then AttackRemote:FireServer(target.character, 10) else AttackRemote:InvokeServer(target.character, 10) end end,
-        function() if isAuraRemoteEvent then AttackRemote:FireServer(target.character) else AttackRemote:InvokeServer(target.character) end end
-    }
-
-    local success = false
-    for _, attempt in ipairs(attempts) do
-        local result, err = pcall(attempt)
-        if result then
-            success = true
-            auraLastAttackTime = now
-            auraAttackCounter = auraAttackCounter + 1
-            break
+    local success = pcall(function()
+        if isAuraRemoteEvent then
+            AttackRemote:FireServer(target.character, 1)
         else
-            if err and string.find(tostring(err):lower(), "rate") then
-                auraRateLimitHit = true
-                auraRateLimitRecoveryTime = now
-                break
-            end
+            AttackRemote:InvokeServer(target.character, 1)
         end
+    end)
+    if success then
+        auraLastAttackTime = now
+        auraAttackCounter = auraAttackCounter + 1
     end
     return success
 end
 
-local function attackLoop()
+RunService.Heartbeat:Connect(function()
     if not AURA_CONFIG.Enabled then return end
     local char = LocalPlayer.Character
     if not char then return end
@@ -206,72 +167,59 @@ local function attackLoop()
     end
 
     local target = EntityManager:getNearest(hrp.Position, AURA_CONFIG.Range)
-    if not target then return end
-
-    for i = 1, AURA_CONFIG.BurstSize do
-        if sendAttack(target) then
-            if i < AURA_CONFIG.BurstSize then task.wait(0.02) end
-        else
-            break
-        end
+    if target then
+        sendAttack(target)
     end
-end
-RunService.Heartbeat:Connect(attackLoop)
+end)
 
 -- =============================================
--- SCRIPT 2: GOD MODE / EATER V12.1 LOGIC
+-- SCRIPT 2: NO FALL DAMAGE + ULTRA GOD EATER
 -- =============================================
 local EATER_CONFIG = {
     Enabled = false,
-    EatsPerFrame = 4, -- Reduced to optimize lag
+    EatsPerFrame = 2, -- Lowered to completely remove frame drops/lag
     MaxSlot = 36,
 }
 
 local ConsumeRemote = ReplicatedStorage:FindFirstChild("Systems") and ReplicatedStorage.Systems:FindFirstChild("ActionsSystem") and ReplicatedStorage.Systems.ActionsSystem:FindFirstChild("Network") and ReplicatedStorage.Systems.ActionsSystem.Network:FindFirstChild("Consume")
-local totalEaten = 0
-local speedTimer = 0
-local speedCounter = 0
 local slotIndex = 1
 local eaterConnection = nil
 local currentEatsPerSec = 0
+local speedCounter = 0
+local speedTimer = 0
+
+-- Neutralize Fall Damage & Environment Damage via Dummy Trick (Lag-Free)
+pcall(function()
+    local combatNetwork = ReplicatedStorage:WaitForChild("Systems"):WaitForChild("CombatSystem"):WaitForChild("Network")
+    local function nullifyRemote(remoteName)
+        local realRemote = combatNetwork:FindFirstChild(remoteName)
+        if realRemote then
+            local dummy = Instance.new("RemoteEvent")
+            dummy.Name = remoteName
+            dummy.Parent = combatNetwork
+            realRemote:Destroy()
+        end
+    end
+    nullifyRemote("FallDamage")
+    nullifyRemote("DrownDamage")
+    nullifyRemote("EnteredLava")
+end)
 
 local function ResetEat()
     slotIndex = 1
 end
 
-local function SecureHumanoid(hum)
-    if not hum then return end
-    pcall(function()
-        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-    end)
-end
-
-local function SetupHealthMonitor(char)
-    local hum = char:WaitForChild("Humanoid", 3)
-    if hum then
-        SecureHumanoid(hum)
-        hum.HealthChanged:Connect(function(newHealth)
-            if newHealth <= 0 and not EATER_CONFIG.Enabled then ResetEat() end
-        end)
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("Humanoid") then
+        local hum = char.Humanoid
+        if hum.MaxHealth ~= 100 then hum.MaxHealth = 100 end
+        if hum.Health < 100 then hum.Health = 100 end
     end
-end
-
-LocalPlayer.CharacterAdded:Connect(function(char)
-    ResetEat()
-    SetupHealthMonitor(char)
 end)
-
-if LocalPlayer.Character then
-    SetupHealthMonitor(LocalPlayer.Character)
-end
 
 local function OptimizedEat()
     if not EATER_CONFIG.Enabled or not ConsumeRemote then return end
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChild("Humanoid")
-    if not hum then return end
-
     for i = 1, EATER_CONFIG.EatsPerFrame do
         local slot = slotIndex
         task.spawn(function()
@@ -279,7 +227,6 @@ local function OptimizedEat()
                 ConsumeRemote:InvokeServer(slot)
             end)
         end)
-        totalEaten = totalEaten + 1
         speedCounter = speedCounter + 1
         slotIndex = slotIndex + 1
         if slotIndex > EATER_CONFIG.MaxSlot then
@@ -296,7 +243,7 @@ local function OptimizedEat()
 end
 
 -- =============================================
--- SCRIPT 3: MOVEMENT, VISUALS & INSTANT MINE WHITELIST
+-- SCRIPT 3: MOVEMENT, VISUALS & INSTANT MINE
 -- =============================================
 local UTILS_CONFIG = {
     WalkSpeed = 16,
@@ -350,17 +297,16 @@ local function toggleNoclip(state)
     end
 end
 
--- Instant Mine & Whitelist Logic (Optimized Interval)
+-- Optimized Instant Mine Loop (1s interval to prevent lag)
 task.spawn(function()
-    while task.wait(0.5) do
+    while task.wait(1) do
         if UTILS_CONFIG.InstantMine then
             pcall(function()
                 for _, obj in ipairs(Workspace:GetDescendants()) do
-                    if obj.Name:lower():find("mine") or obj.Name:lower():find("rock") or obj.Name:lower():find("ore") or obj.Name:lower():find("node") then
+                    local name = obj.Name:lower()
+                    if name:find("mine") or name:find("rock") or name:find("ore") or name:find("node") then
                         local prompt = obj:FindFirstChildOfClass("ProximityPrompt")
-                        if prompt then
-                            prompt.HoldDuration = 0
-                        end
+                        if prompt then prompt.HoldDuration = 0 end
                     end
                 end
             end)
@@ -368,11 +314,16 @@ task.spawn(function()
     end
 end)
 
--- Player ESP (Purple Theme Glow)
+-- ESP Setup
 local espFolder = Instance.new("Folder")
 espFolder.Name = "NightmarePlayerESP"
 pcall(function() espFolder.Parent = CoreGui end)
 if not espFolder.Parent then espFolder.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+local rgbStrokes = {}
+local rgbButtons = {}
+local rgbToggles = {}
+local rgbFills = {}
 
 local function applyPlayerESP(player)
     if player == LocalPlayer then return end
@@ -385,8 +336,8 @@ local function applyPlayerESP(player)
             hl.Name = player.Name
             hl.Adornee = char
             hl.FillColor = Color3.fromRGB(138, 43, 226)
-            hl.OutlineColor = Color3.fromRGB(230, 230, 250)
-            hl.FillTransparency = 0.4
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
             hl.OutlineTransparency = 0
             hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             hl.Parent = espFolder
@@ -410,64 +361,49 @@ local function togglePlayerESP(state)
 end
 
 -- =============================================
--- SECURE UI CONTAINER SETUP (LOCKED & COMPACT)
+-- SECURE UI CONTAINER SETUP (RGB DYNAMIC)
 -- =============================================
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "NightmarePurpleHub"
+ScreenGui.Name = "NightmareRGBHub"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-local successCore = pcall(function()
-    ScreenGui.Parent = CoreGui
-end)
-if not successCore or not ScreenGui.Parent then
-    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
--- Key System Window (Purple Theme)
+-- Key Window
 local KeyMain = Instance.new("Frame")
-KeyMain.Name = "KeyMain"
 KeyMain.Size = UDim2.new(0, 360, 0, 200)
 KeyMain.Position = UDim2.new(0.5, -180, 0.5, -100)
 KeyMain.BackgroundColor3 = Color3.fromRGB(20, 15, 30)
 KeyMain.BorderSizePixel = 0
 KeyMain.Parent = ScreenGui
 
-local KeyCorner = Instance.new("UICorner")
-KeyCorner.CornerRadius = UDim.new(0, 8)
-KeyCorner.Parent = KeyMain
-
-local KeyStroke = Instance.new("UIStroke")
-KeyStroke.Color = Color3.fromRGB(138, 43, 226)
+Instance.new("UICorner", KeyMain).CornerRadius = UDim.new(0, 8)
+local KeyStroke = Instance.new("UIStroke", KeyMain)
 KeyStroke.Thickness = 2
-KeyStroke.Parent = KeyMain
+table.insert(rgbStrokes, KeyStroke)
 
-local KeyTitle = Instance.new("TextLabel")
+local KeyTitle = Instance.new("TextLabel", KeyMain)
 KeyTitle.Size = UDim2.new(1, 0, 0, 40)
 KeyTitle.BackgroundTransparency = 1
-KeyTitle.Text = "🟣 NIGHTMARE HUB | Key System"
-KeyTitle.TextColor3 = Color3.fromRGB(216, 191, 216)
+KeyTitle.Text = "🌈 NIGHTMARE HUB | Key System"
+KeyTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 KeyTitle.Font = Enum.Font.GothamBold
 KeyTitle.TextSize = 14
-KeyTitle.Parent = KeyMain
 
-local KeyBox = Instance.new("TextBox")
+local KeyBox = Instance.new("TextBox", KeyMain)
 KeyBox.Size = UDim2.new(0.85, 0, 0, 38)
 KeyBox.Position = UDim2.new(0.075, 0, 0.32, 0)
 KeyBox.BackgroundColor3 = Color3.fromRGB(35, 25, 50)
 KeyBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 KeyBox.PlaceholderText = "Enter Key (NIGHTMARE_KING)"
-KeyBox.PlaceholderColor3 = Color3.fromRGB(150, 130, 170)
 KeyBox.Text = ""
 KeyBox.Font = Enum.Font.Gotham
 KeyBox.TextSize = 12
-KeyBox.Parent = KeyMain
+Instance.new("UICorner", KeyBox).CornerRadius = UDim.new(0, 6)
 
-local KeyBoxCorner = Instance.new("UICorner")
-KeyBoxCorner.CornerRadius = UDim.new(0, 6)
-KeyBoxCorner.Parent = KeyBox
-
-local KeySubmit = Instance.new("TextButton")
+local KeySubmit = Instance.new("TextButton", KeyMain)
 KeySubmit.Size = UDim2.new(0.85, 0, 0, 35)
 KeySubmit.Position = UDim2.new(0.075, 0, 0.68, 0)
 KeySubmit.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
@@ -475,54 +411,39 @@ KeySubmit.TextColor3 = Color3.fromRGB(255, 255, 255)
 KeySubmit.Text = "UNLOCK HUB"
 KeySubmit.Font = Enum.Font.GothamBold
 KeySubmit.TextSize = 12
-KeySubmit.Parent = KeyMain
+Instance.new("UICorner", KeySubmit).CornerRadius = UDim.new(0, 6)
+table.insert(rgbButtons, KeySubmit)
 
-local KeySubmitCorner = Instance.new("UICorner")
-KeySubmitCorner.CornerRadius = UDim.new(0, 6)
-KeySubmitCorner.Parent = KeySubmit
-
--- Main UI Container (Locked in Place)
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
+-- Main Frame
+local MainFrame = Instance.new("Frame", ScreenGui)
 MainFrame.Size = UDim2.new(0, 460, 0, 300)
 MainFrame.Position = UDim2.new(0.5, -230, 0.5, -150)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 15, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
-MainFrame.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 8)
-MainCorner.Parent = MainFrame
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(138, 43, 226)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+local MainStroke = Instance.new("UIStroke", MainFrame)
 MainStroke.Thickness = 2
-MainStroke.Parent = MainFrame
+table.insert(rgbStrokes, MainStroke)
 
--- Top Bar (Static / Unmovable)
-local TopBar = Instance.new("Frame")
+local TopBar = Instance.new("Frame", MainFrame)
 TopBar.Size = UDim2.new(1, 0, 0, 35)
 TopBar.BackgroundColor3 = Color3.fromRGB(30, 22, 45)
 TopBar.BorderSizePixel = 0
-TopBar.Parent = MainFrame
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 8)
 
-local TopBarCorner = Instance.new("UICorner")
-TopBarCorner.CornerRadius = UDim.new(0, 8)
-TopBarCorner.Parent = TopBar
-
-local TitleLabel = Instance.new("TextLabel")
+local TitleLabel = Instance.new("TextLabel", TopBar)
 TitleLabel.Size = UDim2.new(1, -65, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🟣 NIGHTMARE HUB | By ITZ_YOURNIGHTMARE"
-TitleLabel.TextColor3 = Color3.fromRGB(216, 191, 216)
+TitleLabel.Text = "🌈 NIGHTMARE HUB | By ITZ_YOURNIGHTMARE"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextSize = 12
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TopBar
 
-local HideButton = Instance.new("TextButton")
+local HideButton = Instance.new("TextButton", TopBar)
 HideButton.Size = UDim2.new(0, 45, 0, 22)
 HideButton.Position = UDim2.new(1, -52, 0.5, -11)
 HideButton.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
@@ -530,32 +451,22 @@ HideButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 HideButton.Text = "HIDE"
 HideButton.Font = Enum.Font.GothamBold
 HideButton.TextSize = 10
-HideButton.Parent = TopBar
+Instance.new("UICorner", HideButton).CornerRadius = UDim.new(0, 4)
+table.insert(rgbButtons, HideButton)
 
-local HideButtonCorner = Instance.new("UICorner")
-HideButtonCorner.CornerRadius = UDim.new(0, 4)
-HideButtonCorner.Parent = HideButton
-
--- Floating Open Button (Locked position)
-local OpenButton = Instance.new("TextButton")
+local OpenButton = Instance.new("TextButton", ScreenGui)
 OpenButton.Size = UDim2.new(0, 50, 0, 50)
 OpenButton.Position = UDim2.new(0, 20, 0.5, -25)
 OpenButton.BackgroundColor3 = Color3.fromRGB(20, 15, 30)
-OpenButton.TextColor3 = Color3.fromRGB(138, 43, 226)
+OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 OpenButton.Text = "NM"
 OpenButton.Font = Enum.Font.GothamBold
 OpenButton.TextSize = 12
 OpenButton.Visible = false
-OpenButton.Parent = ScreenGui
-
-local OpenButtonCorner = Instance.new("UICorner")
-OpenButtonCorner.CornerRadius = UDim.new(1, 0)
-OpenButtonCorner.Parent = OpenButton
-
-local OpenButtonStroke = Instance.new("UIStroke")
-OpenButtonStroke.Color = Color3.fromRGB(138, 43, 226)
-OpenButtonStroke.Thickness = 2
-OpenButtonStroke.Parent = OpenButton
+Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
+local OpenStroke = Instance.new("UIStroke", OpenButton)
+OpenStroke.Thickness = 2
+table.insert(rgbStrokes, OpenStroke)
 
 OpenButton.MouseButton1Click:Connect(function()
     OpenButton.Visible = false
@@ -567,130 +478,96 @@ HideButton.MouseButton1Click:Connect(function()
     OpenButton.Visible = true
 end)
 
--- Sidebar & Tabs
-local Sidebar = Instance.new("Frame")
+local Sidebar = Instance.new("Frame", MainFrame)
 Sidebar.Size = UDim2.new(0, 115, 1, -35)
 Sidebar.Position = UDim2.new(0, 0, 0, 35)
 Sidebar.BackgroundColor3 = Color3.fromRGB(26, 19, 39)
 Sidebar.BorderSizePixel = 0
-Sidebar.Parent = MainFrame
-
-local SidebarList = Instance.new("UIListLayout")
+local SidebarList = Instance.new("UIListLayout", Sidebar)
 SidebarList.SortOrder = Enum.SortOrder.LayoutOrder
 SidebarList.Padding = UDim.new(0, 4)
-SidebarList.Parent = Sidebar
 
-local ContentContainer = Instance.new("Frame")
+local ContentContainer = Instance.new("Frame", MainFrame)
 ContentContainer.Size = UDim2.new(1, -120, 1, -40)
 ContentContainer.Position = UDim2.new(0, 120, 0, 40)
 ContentContainer.BackgroundTransparency = 1
-ContentContainer.Parent = MainFrame
 
 local tabs = {}
 local function createTab(name)
-    local btn = Instance.new("TextButton")
+    local btn = Instance.new("TextButton", Sidebar)
     btn.Size = UDim2.new(1, -8, 0, 30)
     btn.BackgroundColor3 = Color3.fromRGB(35, 25, 50)
-    btn.TextColor3 = Color3.fromRGB(150, 130, 170)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
     btn.Text = name
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 11
-    btn.Parent = Sidebar
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 5)
-    btnCorner.Parent = btn
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
 
-    local page = Instance.new("ScrollingFrame")
+    local page = Instance.new("ScrollingFrame", ContentContainer)
     page.Size = UDim2.new(1, 0, 1, 0)
     page.BackgroundTransparency = 1
     page.ScrollBarThickness = 3
     page.Visible = false
-    page.Parent = ContentContainer
-
-    local pageLayout = Instance.new("UIListLayout")
+    local pageLayout = Instance.new("UIListLayout", page)
     pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
     pageLayout.Padding = UDim.new(0, 6)
-    pageLayout.Parent = page
-
-    local pagePadding = Instance.new("UIPadding")
-    pagePadding.PaddingRight = UDim.new(0, 8)
-    pagePadding.Parent = page
 
     table.insert(tabs, {button = btn, page = page})
 
     btn.MouseButton1Click:Connect(function()
         for _, t in ipairs(tabs) do
             t.page.Visible = (t.page == page)
-            t.button.BackgroundColor3 = (t.button == btn) and Color3.fromRGB(138, 43, 226) or Color3.fromRGB(35, 25, 50)
-            t.button.TextColor3 = (t.button == btn) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(150, 130, 170)
+            t.button.TextColor3 = (t.button == btn) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
         end
     end)
 
-    if #tabs == 1 then
-        page.Visible = true
-        btn.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end
-
+    if #tabs == 1 then page.Visible = true end
     return page
 end
 
--- UI Component Builders with Fixed Locked Toggles
 local function addToggle(page, text, callback)
-    local frame = Instance.new("Frame")
+    local frame = Instance.new("Frame", page)
     frame.Size = UDim2.new(1, 0, 0, 32)
     frame.BackgroundColor3 = Color3.fromRGB(28, 20, 42)
     frame.BorderSizePixel = 0
-    frame.Parent = page
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 5)
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = frame
-
-    local label = Instance.new("TextLabel")
+    local label = Instance.new("TextLabel", frame)
     label.Size = UDim2.new(1, -45, 1, 0)
     label.Position = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = Color3.fromRGB(216, 191, 216)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
     label.Font = Enum.Font.Gotham
     label.TextSize = 11
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
 
-    local toggleBtn = Instance.new("TextButton")
+    local toggleBtn = Instance.new("TextButton", frame)
     toggleBtn.Size = UDim2.new(0, 34, 0, 18)
     toggleBtn.Position = UDim2.new(1, -40, 0.5, -9)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 70)
     toggleBtn.Text = ""
-    toggleBtn.Parent = frame
+    Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(1, 0)
-    toggleCorner.Parent = toggleBtn
-
-    local circle = Instance.new("Frame")
+    local circle = Instance.new("Frame", toggleBtn)
     circle.Size = UDim2.new(0, 14, 0, 14)
     circle.Position = UDim2.new(0, 2, 0.5, -7)
-    circle.BackgroundColor3 = Color3.fromRGB(200, 180, 220)
-    circle.Parent = toggleBtn
-
-    local circleCorner = Instance.new("UICorner")
-    circleCorner.CornerRadius = UDim.new(1, 0)
-    circleCorner.Parent = circle
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
 
     local state = false
     local function setState(val)
         state = val
         if state then
             toggleBtn.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
+            table.insert(rgbToggles, toggleBtn)
             circle.Position = UDim2.new(1, -16, 0.5, -7)
-            circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
         else
             toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 40, 70)
+            for i, b in ipairs(rgbToggles) do
+                if b == toggleBtn then table.remove(rgbToggles, i) break end
+            end
             circle.Position = UDim2.new(0, 2, 0.5, -7)
-            circle.BackgroundColor3 = Color3.fromRGB(200, 180, 220)
         end
         callback(state)
     end
@@ -700,226 +577,165 @@ local function addToggle(page, text, callback)
 end
 
 local function addSlider(page, text, min, max, default, callback)
-    local frame = Instance.new("Frame")
+    local frame = Instance.new("Frame", page)
     frame.Size = UDim2.new(1, 0, 0, 42)
     frame.BackgroundColor3 = Color3.fromRGB(28, 20, 42)
     frame.BorderSizePixel = 0
-    frame.Parent = page
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 5)
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = frame
-
-    local label = Instance.new("TextLabel")
+    local label = Instance.new("TextLabel", frame)
     label.Size = UDim2.new(1, -16, 0, 18)
     label.Position = UDim2.new(0, 8, 0, 3)
     label.BackgroundTransparency = 1
     label.Text = string.format("%s: %d", text, default)
-    label.TextColor3 = Color3.fromRGB(216, 191, 216)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
     label.Font = Enum.Font.Gotham
     label.TextSize = 11
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = frame
 
-    local sliderBg = Instance.new("Frame")
+    local sliderBg = Instance.new("Frame", frame)
     sliderBg.Size = UDim2.new(1, -16, 0, 6)
     sliderBg.Position = UDim2.new(0, 8, 0, 26)
     sliderBg.BackgroundColor3 = Color3.fromRGB(50, 40, 70)
     sliderBg.BorderSizePixel = 0
-    sliderBg.Parent = frame
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
 
-    local sliderCorner = Instance.new("UICorner")
-    sliderCorner.CornerRadius = UDim.new(1, 0)
-    sliderCorner.Parent = sliderBg
-
-    local sliderFill = Instance.new("Frame")
+    local sliderFill = Instance.new("Frame", sliderBg)
     sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
     sliderFill.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
     sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderBg
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+    table.insert(rgbFills, sliderFill)
 
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(1, 0)
-    fillCorner.Parent = sliderFill
-
-    local draggingSlider = false
-    local function updateValue(input)
-        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
-        local val = math.floor(min + (max - min) * pos)
-        sliderFill.Size = UDim2.new(pos, 0, 1, 0)
-        label.Text = string.format("%s: %d", text, val)
-        callback(val)
-    end
-
+    local dragging = false
     sliderBg.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            draggingSlider = true
-            updateValue(input)
+            dragging = true
         end
     end)
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            draggingSlider = false
+            dragging = false
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if draggingSlider and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updateValue(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+            local val = math.floor(min + (max - min) * pos)
+            sliderFill.Size = UDim2.new(pos, 0, 1, 0)
+            label.Text = string.format("%s: %d", text, val)
+            callback(val)
         end
     end)
 end
 
 local function addButton(page, text, callback)
-    local btn = Instance.new("TextButton")
+    local btn = Instance.new("TextButton", page)
     btn.Size = UDim2.new(1, 0, 0, 30)
     btn.BackgroundColor3 = Color3.fromRGB(138, 43, 226)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Text = text
     btn.Font = Enum.Font.GothamBold
     btn.TextSize = 11
-    btn.Parent = page
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = btn
-
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+    table.insert(rgbButtons, btn)
     btn.MouseButton1Click:Connect(callback)
 end
 
 local function addLabel(page, text)
-    local label = Instance.new("TextLabel")
+    local label = Instance.new("TextLabel", page)
     label.Size = UDim2.new(1, 0, 0, 20)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = Color3.fromRGB(150, 130, 170)
+    label.TextColor3 = Color3.fromRGB(200, 200, 200)
     label.Font = Enum.Font.Gotham
     label.TextSize = 11
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = page
     return label
 end
 
 -- =============================================
--- BUILD TABS & CONTENT
+-- BUILD TABS
 -- =============================================
-
--- TAB 1: Kill Aura
 local AuraTab = createTab("Kill Aura")
 local AuraToggle = addToggle(AuraTab, "Enable Kill Aura", function(Value)
     AURA_CONFIG.Enabled = Value
     if Value then
         EntityManager:refresh()
-        auraRateLimitHit = false
-        sendChatMessage("NIGHTMARE KILL AURA ON 🟣⚔️")
+        sendChatMessage("NIGHTMARE KILL AURA ON 🌈⚔️")
     else
         sendChatMessage("[Nightmare Hub]: Kill Aura Disabled ❌")
     end
 end)
-addSlider(AuraTab, "Attack Range (Studs)", 5, 100, AURA_CONFIG.Range, function(Value) AURA_CONFIG.Range = Value end)
-addSlider(AuraTab, "Attacks Per Second", 1, 30, AURA_CONFIG.MaxAttacksPerSecond, function(Value) AURA_CONFIG.MaxAttacksPerSecond = Value end)
-addSlider(AuraTab, "Burst Size", 1, 5, AURA_CONFIG.BurstSize, function(Value) AURA_CONFIG.BurstSize = Value end)
-addToggle(AuraTab, "Target Players", function(Value) AURA_CONFIG.TargetPlayers = Value EntityManager:refresh() end).Set(true)
-addToggle(AuraTab, "Target NPCs", function(Value) AURA_CONFIG.TargetNPCs = Value EntityManager:refresh() end).Set(true)
+addSlider(AuraTab, "Attack Range", 5, 80, AURA_CONFIG.Range, function(V) AURA_CONFIG.Range = V end)
+addSlider(AuraTab, "Attacks Per Sec", 1, 20, AURA_CONFIG.MaxAttacksPerSecond, function(V) AURA_CONFIG.MaxAttacksPerSecond = V end)
+addToggle(AuraTab, "Target Players", function(V) AURA_CONFIG.TargetPlayers = V EntityManager:refresh() end).Set(true)
+addToggle(AuraTab, "Target NPCs", function(V) AURA_CONFIG.TargetNPCs = V EntityManager:refresh() end).Set(true)
 local AuraStatsLabel = addLabel(AuraTab, "Attacks Sent: 0")
 
--- TAB 2: God Mode & Eater V12.1
 local GodTab = createTab("God Mode")
-local GodToggle = addToggle(GodTab, "Enable Ultra God Eater", function(Value)
+local GodToggle = addToggle(GodTab, "Enable God Eater & No Fall Damage", function(Value)
     EATER_CONFIG.Enabled = Value
     if Value then
         ResetEat()
-        speedCounter = 0
-        speedTimer = 0
         if eaterConnection then eaterConnection:Disconnect() end
         eaterConnection = RunService.Heartbeat:Connect(OptimizedEat)
-        sendChatMessage("[Nightmare Hub]: Ultra God Eater Active 🛡️")
+        sendChatMessage("[Nightmare Hub]: Ultra God Eater & No Fall Active 🛡️")
     else
         if eaterConnection then eaterConnection:Disconnect() eaterConnection = nil end
         ResetEat()
-        currentEatsPerSec = 0
         sendChatMessage("[Nightmare Hub]: Ultra God Eater Disabled ❌")
     end
 end)
-addSlider(GodTab, "Eats Per Frame", 1, 50, EATER_CONFIG.EatsPerFrame, function(Value) EATER_CONFIG.EatsPerFrame = Value end)
-addSlider(GodTab, "Max Inventory Slots", 1, 200, EATER_CONFIG.MaxSlot, function(Value) EATER_CONFIG.MaxSlot = Value end)
-addButton(GodTab, "Reset Eat Slot Index (Hotkey: R)", function()
-    ResetEat()
-    sendChatMessage("[Nightmare Hub]: Eat Slot Index Reset 🔄")
-end)
+addSlider(GodTab, "Eats Per Frame", 1, 20, EATER_CONFIG.EatsPerFrame, function(V) EATER_CONFIG.EatsPerFrame = V end)
+addSlider(GodTab, "Max Inventory Slots", 1, 200, EATER_CONFIG.MaxSlot, function(V) EATER_CONFIG.MaxSlot = V end)
+addButton(GodTab, "Reset Eat Slot Index (Hotkey: R)", function() ResetEat() end)
 local EatStatsLabel = addLabel(GodTab, "Slot: 1/36 | Speed: ⚡0/s")
 
--- TAB 3: Visuals & Mining
-local VisualsTab = createTab("Visuals & Mining")
-addToggle(VisualsTab, "Instant Mine Whitelist", function(Value)
-    UTILS_CONFIG.InstantMine = Value
-    if Value then
-        sendChatMessage("[Nightmare Hub]: Instant Mine Activated ⛏️")
-    else
-        sendChatMessage("[Nightmare Hub]: Instant Mine Deactivated ❌")
-    end
-end)
-addToggle(VisualsTab, "Player Chams ESP", function(Value)
-    togglePlayerESP(Value)
-    if Value then
-        sendChatMessage("[Nightmare Hub]: Chams ESP Activated 👁️")
-    else
-        sendChatMessage("[Nightmare Hub]: Chams ESP Deactivated ❌")
-    end
-end)
+local VisualsTab = createTab("Visuals")
+addToggle(VisualsTab, "Instant Mine Whitelist", function(V) UTILS_CONFIG.InstantMine = V end)
+addToggle(VisualsTab, "Player Chams ESP", function(V) togglePlayerESP(V) end)
 
--- TAB 4: Movement
 local MovementTab = createTab("Movement")
-addToggle(MovementTab, "Enable WalkSpeed Hack", function(Value)
-    UTILS_CONFIG.SpeedEnabled = Value
-    if not Value then
-        local char = LocalPlayer.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = 16 end
-        end
-    end
-end)
-addSlider(MovementTab, "WalkSpeed Value", 16, 200, UTILS_CONFIG.WalkSpeed, function(Value) UTILS_CONFIG.WalkSpeed = Value end)
-addToggle(MovementTab, "Infinite Jump", function(Value) UTILS_CONFIG.InfJumpEnabled = Value end)
-addToggle(MovementTab, "Noclip", function(Value) toggleNoclip(Value) end)
+addToggle(MovementTab, "Enable WalkSpeed Hack", function(V) UTILS_CONFIG.SpeedEnabled = V end)
+addSlider(MovementTab, "WalkSpeed Value", 16, 150, UTILS_CONFIG.WalkSpeed, function(V) UTILS_CONFIG.WalkSpeed = V end)
+addToggle(MovementTab, "Infinite Jump", function(V) UTILS_CONFIG.InfJumpEnabled = V end)
+addToggle(MovementTab, "Noclip", function(V) toggleNoclip(V) end)
 
--- =============================================
--- KEY SYSTEM WITH AUTO-SAVE LOGIC
--- =============================================
-local KEY_FILE = "nightmare_purple_key.txt"
-
+-- Key Submission & Auto-Save
+local KEY_FILE = "nightmare_rgb_key.txt"
 pcall(function()
-    if readfile and writefile and isfile and isfile(KEY_FILE) then
-        local savedKey = readfile(KEY_FILE)
-        if savedKey == "NIGHTMARE_KING" then
-            KeyMain.Visible = false
-            MainFrame.Visible = true
-            sendChatMessage("[Nightmare Hub]: Auto-logged with saved key! 🟣")
-            checkOtherUsers()
-        end
+    if readfile and isfile and isfile(KEY_FILE) and readfile(KEY_FILE) == "NIGHTMARE_KING" then
+        KeyMain.Visible = false
+        MainFrame.Visible = true
+        checkOtherUsers()
     end
 end)
 
 KeySubmit.MouseButton1Click:Connect(function()
     if KeyBox.Text == "NIGHTMARE_KING" then
-        pcall(function()
-            if writefile then
-                writefile(KEY_FILE, "NIGHTMARE_KING")
-            end
-        end)
+        pcall(function() if writefile then writefile(KEY_FILE, "NIGHTMARE_KING") end end)
         KeyMain.Visible = false
         MainFrame.Visible = true
-        sendChatMessage("[Nightmare Hub]: Successfully unlocked by ITZ_YOURNIGHTMARE! 🟣💀")
         checkOtherUsers()
     else
         KeyBox.Text = ""
-        KeyBox.PlaceholderText = "Invalid Key! Try Again"
+        KeyBox.PlaceholderText = "Invalid Key!"
     end
 end)
 
--- =============================================
--- KEYBOARD HOTKEYS (O, K, R)
--- =============================================
+-- RGB Loop (Optimized to render smoothly without lag)
+RunService.RenderStepped:Connect(function()
+    local hue = (tick() % 5) / 5
+    local rgbColor = Color3.fromHSV(hue, 1, 1)
+
+    for _, stroke in ipairs(rgbStrokes) do stroke.Color = rgbColor end
+    for _, btn in ipairs(rgbButtons) do btn.BackgroundColor3 = rgbColor end
+    for _, fill in ipairs(rgbFills) do fill.BackgroundColor3 = rgbColor end
+    for _, tBtn in ipairs(rgbToggles) do tBtn.BackgroundColor3 = rgbColor end
+end)
+
+-- Hotkeys & Status
 UserInputService.InputBegan:Connect(function(Input, GameProcessed)
     if GameProcessed then return end
     if Input.KeyCode == Enum.KeyCode.O then
@@ -931,19 +747,16 @@ UserInputService.InputBegan:Connect(function(Input, GameProcessed)
     end
 end)
 
--- =============================================
--- LIVE STATUS LOOP (Optimized 1s interval)
--- =============================================
 task.spawn(function()
     while task.wait(1) do
         if AuraStatsLabel then
-            AuraStatsLabel.Text = "Attacks Sent: " .. tostring(auraAttackCounter) .. " | Targets Cached: " .. tostring(#EntityManager.cache)
+            AuraStatsLabel.Text = "Attacks Sent: " .. tostring(auraAttackCounter)
         end
         if EatStatsLabel then
             if EATER_CONFIG.Enabled then
                 EatStatsLabel.Text = "Slot: " .. tostring(slotIndex) .. "/" .. tostring(EATER_CONFIG.MaxSlot) .. " | Speed: ⚡" .. tostring(currentEatsPerSec) .. "/s"
             else
-                EatStatsLabel.Text = "Status: IDLE | Speed: ⚡0/s"
+                EatStatsLabel.Text = "Status: IDLE"
             end
         end
     end
